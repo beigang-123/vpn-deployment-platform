@@ -1,0 +1,31 @@
+{
+  "name": "vpn-deploy-platform",
+  "version": "1.0.0",
+  "description": "VPN One-Click Deployment Platform",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run start:dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run build:backend && npm run build:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [
+    "vpn",
+    "v2ray",
+    "xray",
+    "deployment",
+    "self-hosted"
+  ],
+  "author": "VPN Deploy Team",
+  "license": "MIT"
+}

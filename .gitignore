@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+build/
+
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# env
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# database
+*.db
+*.sqlite
+
+# VPN Config Files (contain sensitive information)
+*.yaml
+!*.example.yaml
+clash-config.yaml
+
+# Temporary files
+nul
