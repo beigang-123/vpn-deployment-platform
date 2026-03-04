@@ -1,8 +1,10 @@
-import { Controller, Get, Param, HttpException, HttpStatus, Res } from '@nestjs/common';
+import { Controller, Get, Param, HttpException, HttpStatus, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { ConfigService } from './config.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('api/config')
+@UseGuards(JwtAuthGuard)
 export class ConfigController {
   constructor(private configService: ConfigService) {}
 

@@ -1,12 +1,13 @@
-import { IsString, IsInt, IsEnum, IsOptional, IsNotEmpty } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNotEmpty, IsEmail } from 'class-validator';
 import { VpnType } from '../../entities/deployment.entity';
+import { IsIP, IsPort, IsMinPassword, IsPrivateKey } from '../../common/validators';
 
 export class StartDeployDto {
-  @IsString()
+  @IsIP()
   @IsNotEmpty()
   serverIp: string;
 
-  @IsInt()
+  @IsPort()
   @IsNotEmpty()
   sshPort: number;
 
@@ -15,6 +16,7 @@ export class StartDeployDto {
   username: string;
 
   @IsString()
+  @IsMinPassword()
   @IsNotEmpty()
   password: string;
 
@@ -23,7 +25,12 @@ export class StartDeployDto {
   vpnType: VpnType;
 
   @IsOptional()
+  @IsPort()
+  vpnPort?: number;
+
+  @IsOptional()
   @IsString()
+  @IsPrivateKey()
   privateKey?: string;
 }
 
@@ -37,3 +44,26 @@ export interface VpnConfig {
   shareLink: string;
   clientConfig: any;
 }
+
+// Auth DTOs with strong password validation
+export class RegisterDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @IsString()
+  @IsMinPassword()
+  @IsNotEmpty()
+  password: string;
+}
+
+export class LoginDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+

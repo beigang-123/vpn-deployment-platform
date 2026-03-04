@@ -2,20 +2,18 @@
 
 ###############################################################
 # V2Ray 一键安装脚本
-# 支持: Ubuntu, Debian, CentOS
+# 支持: Ubuntu, Debian, CentOS, RHEL, Fedora, Arch, Alpine, openSUSE
 # 协议: VMess
 ###############################################################
 
 # 转换 Windows 换行符
 sed -i 's/\r$//' "$0" 2>/dev/null || true
 
-# 不在错误时立即退出，手动处理错误
-# set -e
-
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 log_info() {
@@ -30,33 +28,91 @@ log_warn() {
     echo -e "${YELLOW}[警告]${NC} $1"
 }
 
-# 检测操作系统
+# 检测操作系统和包管理器
 detect_os() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         OS=$ID
         OS_VERSION=$VERSION_ID
+        OS_like=$ID_LIKE
     else
         log_error "无法检测操作系统"
         exit 1
     fi
 
     log_info "检测到操作系统: $OS $OS_VERSION"
+
+    # 检测包管理器
+    if command -v apt-get &> /dev/null; then
+        PKG_MANAGER="apt"
+    elif command -v yum &> /dev/null; then
+        PKG_MANAGER="yum"
+    elif command -v dnf &> /dev/null; then
+        PKG_MANAGER="dnf"
+    elif command -v pacman &> /dev/null; then
+        PKG_MANAGER="pacman"
+    elif command -v apk &> /dev/null; then
+        PKG_MANAGER="apk"
+    elif command -v zypper &> /dev/null; then
+        PKG_MANAGER="zypper"
+    elif command -v opkg &> /dev/null; then
+        PKG_MANAGER="opkg"
+    else
+        log_error "无法检测包管理器"
+        exit 1
+    fi
+
+    log_info "检测到包管理器: $PKG_MANAGER"
 }
 
-# 安装依赖
+# 安装依赖（通用）
 install_dependencies() {
     log_info "正在安装依赖..."
 
-    if [[ "$OS" =~ ^(ubuntu|debian)$ ]]; then
-        apt-get update -qq
-        apt-get install -y curl wget unzip > /dev/null 2>&1
-    elif [[ "$OS" =~ ^(centos|rhel|fedora)$ ]]; then
-        yum install -y curl wget unzip > /dev/null 2>&1
-    else
-        log_error "不支持的操作系统: $OS"
-        exit 1
-    fi
+    case $PKG_MANAGER in
+        apt)
+            # Debian/Ubuntu
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y curl wget unzip ca-certificates > /dev/null 2>&1
+            ;;
+        yum|dnf)
+            # RHEL/CentOS/Fedora
+            if [ "$PKG_MANAGER" = "dnf" ]; then
+                dnf install -y curl wget unzip > /dev/null 2>&1
+            else
+                yum install -y curl wget unzip > /dev/null 2>&1
+            fi
+            ;;
+        pacman)
+            # Arch Linux/Manjaro
+            pacman -Sy --noconfirm curl wget unzip ca-certificates > /dev/null 2>&1
+            ;;
+        apk)
+            # Alpine Linux
+            apk update > /dev/null 2>&1
+            apk add curl wget unzip ca-certificates > /dev/null 2>&1
+            ;;
+        zypper)
+            # openSUSE
+            zypper refresh > /dev/null 2>&1
+            zypper install -y curl wget unzip ca-certificates > /dev/null 2>&1
+            ;;
+        opkg)
+            # OpenWrt
+            opkg update > /dev/null 2>&1
+            opkg install curl wget unzip ca-certificates > /dev/null 2>&1
+            ;;
+        *)
+            log_error "不支持的包管理器: $PKG_MANAGER"
+            log_info "尝试手动安装依赖..."
+            if command -v curl &> /dev/null && command -v wget &> /dev/null && command -v unzip &> /dev/null; then
+                log_info "依赖已存在，跳过安装"
+            else
+                exit 1
+            fi
+            ;;
+    esac
 
     log_info "依赖安装完成"
 }
@@ -65,15 +121,26 @@ install_dependencies() {
 generate_uuid() {
     if command -v uuidgen &> /dev/null; then
         uuidgen
+    elif [ -f /proc/sys/kernel/random/uuid ]; then
+        cat /proc/sys/kernel/random/uuid
     else
-        cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "$(date +%s%N)-$(shuf -i 1000-9999 -n 1)"
+        # 生成一个随机的 UUID
+        printf '%04x%04x-%04x-%04x-%04x-%04x%04x%04x\n' \
+            $RANDOM $RANDOM $RANDOM $((RANDOM % 8192 + 4096)) $((RANDOM % 16384 + 32768)) \
+            $((RANDOM % 65536)) $RANDOM $RANDOM $RANDOM
     fi
 }
 
 # 生成随机端口
 generate_port() {
+    # 如果已经指定了PORT环境变量，直接使用
+    if [ -n "$PORT" ] && [ "$PORT" -gt 0 ] 2>/dev/null; then
+        echo "$PORT"
+        return
+    fi
     # 使用更通用的方法生成随机端口
-    echo $((10000 + ($RANDOM % 50000)))
+    # 避免 0-1024 端口
+    echo $((1024 + ($RANDOM % 64511)))
 }
 
 # 安装 V2Ray
@@ -81,7 +148,7 @@ install_v2ray() {
     log_info "正在安装 V2Ray..."
 
     # 获取最新版本
-    LATEST_VERSION=$(curl -s https://api.github.com/repos/v2fly/v2ray-core/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//')
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/v2fly/v2ray-core/releases/latest 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//')
 
     if [ -z "$LATEST_VERSION" ]; then
         log_warn "无法获取最新版本，使用默认版本"
@@ -93,54 +160,76 @@ install_v2ray() {
     # 下载并安装
     ARCH=$(uname -m)
     case $ARCH in
-        x86_64)
+        x86_64|amd64)
             ARCH="64"
             ;;
-        aarch64)
+        aarch64|arm64)
             ARCH="arm64-v8a"
             ;;
-        armv7l)
+        armv7l|armv7a)
             ARCH="arm32-v7a"
+            ;;
+        armv6l)
+            ARCH="arm32-v6"
+            ;;
+        mips64*)
+            ARCH="mips64le"
+            ;;
+        mips*)
+            ARCH="mipsle"
             ;;
         *)
             log_error "不支持的架构: $ARCH"
-            exit 1
+            log_warn "尝试使用通用安装脚本..."
+            bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) 2>/dev/null || {
+                log_error "通用安装脚本也失败了"
+                exit 1
+            }
+            return 0
             ;;
     esac
 
     DOWNLOAD_URL="https://github.com/v2fly/v2ray-core/releases/download/v${LATEST_VERSION}/v2ray-linux-${ARCH}.zip"
 
-    log_info "正在下载 V2Ray..."
+    log_info "正在下载 V2Ray (架构: $ARCH)..."
     cd /tmp
-    wget -q --show-progress "$DOWNLOAD_URL" -O v2ray.zip || {
-        log_error "下载失败，尝试使用备用安装方式"
-        # 使用官方安装脚本
-        bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+
+    # 尝试多种下载方式
+    if command -v wget &> /dev/null; then
+        wget -q --show-progress "$DOWNLOAD_URL" -O v2ray.zip || curl -L -o v2ray.zip "$DOWNLOAD_URL"
+    else
+        curl -L -o v2ray.zip "$DOWNLOAD_URL"
+    fi
+
+    if [ ! -f v2ray.zip ]; then
+        log_error "下载失败，尝试使用官方安装脚本"
+        bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) 2>/dev/null || {
+            log_error "所有安装方式都失败了"
+            exit 1
+        }
         return 0
-    }
+    fi
 
     log_info "正在解压并安装..."
-    unzip -o v2ray.zip -d /usr/local/bin/ > /dev/null 2>&1
-    chmod +x /usr/local/bin/v2ray /usr/local/bin/v2ctl
 
-    # 创建系统服务文件
-    cat > /etc/systemd/system/v2ray.service <<'EOF'
-[Unit]
-Description=V2Ray Service
-After=network.target
+    # 创建安装目录
+    mkdir -p /usr/local/bin /usr/local/etc/v2ray /var/log/v2ray
 
-[Service]
-Type=simple
-User=root
-ExecStart=/usr/local/bin/v2ray -config /etc/v2ray/config.json
-Restart=on-failure
-RestartSec=5
+    # 解压
+    unzip -o v2ray.zip -d /usr/local/bin/ > /dev/null 2>&1 || {
+        log_error "解压失败"
+        rm -f v2ray.zip
+        exit 1
+    }
 
-[Install]
-WantedBy=multi-user.target
-EOF
+    rm -f v2ray.zip
 
-    systemctl daemon-reload
+    # 设置权限
+    chmod +x /usr/local/bin/v2ray /usr/local/bin/v2ctl 2>/dev/null || true
+    chmod +x /usr/local/bin/v2ray 2>/dev/null || true
+
+    # 创建配置目录
+    mkdir -p /usr/local/etc/v2ray
 
     log_info "V2Ray 安装完成"
 }
@@ -153,14 +242,11 @@ configure_v2ray() {
     UUID=$(generate_uuid)
     PORT=$(generate_port)
 
-    log_info "生成的 UUID: $UUID"
-    log_info "生成的端口: $PORT"
-
-    # 创建配置目录
-    mkdir -p /etc/v2ray
+    log_info "UUID: $UUID"
+    log_info "端口: $PORT"
 
     # 创建 VMess 配置
-    cat > /etc/v2ray/config.json <<EOF
+    cat > /usr/local/etc/v2ray/config.json <<EOF
 {
   "log": {
     "loglevel": "warning"
@@ -198,13 +284,81 @@ EOF
 configure_firewall() {
     log_info "正在配置防火墙..."
 
-    if command -v firewall-cmd &> /dev/null; then
-        firewall-cmd --permanent --add-port=$PORT/tcp > /dev/null 2>&1 || true
-        firewall-cmd --reload > /dev/null 2>&1 || true
-    elif command -v ufw &> /dev/null; then
-        ufw allow $PORT/tcp > /dev/null 2>&1 || true
+    # firewalld (RHEL/CentOS/Fedora)
+    if command -v firewall-cmd &> /dev/null && systemctl is-active firewalld &> /dev/null; then
+        firewall-cmd --permanent --add-port=$PORT/tcp 2>/dev/null || true
+        firewall-cmd --reload 2>/dev/null || true
+        log_info "firewalld 防火墙已配置"
+    # ufw (Ubuntu/Debian)
+    elif command -v ufw &> /dev/null && systemctl is-active ufw &> /dev/null; then
+        ufw allow $PORT/tcp 2>/dev/null || true
+        log_info "ufw 防火墙已配置"
+    # iptables 直接配置
+    elif command -v iptables &> /dev/null; then
+        iptables -I INPUT -p tcp --dport $PORT -j ACCEPT 2>/dev/null || true
+        # 尝试保存 iptables 规则
+        if command -v iptables-save &> /dev/null; then
+            iptables-save > /etc/iptables.rules 2>/dev/null || true
+        fi
+        log_info "iptables 规则已添加"
     else
-        log_warn "未检测到防火墙，跳过配置"
+        log_warn "未检测到防火墙，请手动开放端口 $PORT"
+    fi
+}
+
+# 创建系统服务（支持 systemd 和 openrc）
+create_service() {
+    log_info "正在创建系统服务..."
+
+    # systemd (大多数现代 Linux)
+    if command -v systemctl &> /dev/null; then
+        cat > /etc/systemd/system/v2ray.service <<'EOF'
+[Unit]
+Description=V2Ray Service
+Documentation=https://www.v2fly.com/
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/v2ray -config /usr/local/etc/v2ray/config.json
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl enable v2ray 2>/dev/null || true
+
+        log_info "systemd 服务已创建"
+    # openrc (Gentoo/Alpine)
+    elif command -v rc-update &> /dev/null; then
+        cat > /etc/init.d/v2ray <<'EOF'
+#!/sbin/openrc-run
+# V2Ray service for OpenRC
+
+command="/usr/local/bin/v2ray -config /usr/local/etc/v2ray/config.json"
+command_args=""
+command_background=true
+pidfile="/var/run/v2ray.pid"
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    ebegin "Starting V2Ray"
+}
+EOF
+        chmod +x /etc/init.d/v2ray
+        rc-update add v2ray default 2>/dev/null || true
+        log_info "OpenRC 服务已创建"
+    else
+        log_warn "不支持的 init 系统，将使用手动启动"
     fi
 }
 
@@ -212,25 +366,27 @@ configure_firewall() {
 start_v2ray() {
     log_info "正在启动 V2Ray 服务..."
 
-    # 检查 systemctl 是否可用
     if command -v systemctl &> /dev/null; then
-        systemctl daemon-reload > /dev/null 2>&1 || true
-        systemctl enable v2ray > /dev/null 2>&1 || true
-        systemctl restart v2ray || true
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl restart v2ray 2>/dev/null || true
 
         sleep 2
 
-        if systemctl is-active --quiet v2ray; then
+        if systemctl is-active --quiet v2ray 2>/dev/null; then
             log_info "V2Ray 服务启动成功"
         else
-            log_warn "systemctl 启动失败，尝试直接启动..."
-            nohup /usr/local/bin/v2ray -config /etc/v2ray/config.json > /dev/null 2>&1 &
+            # 尝试直接启动
+            log_warn "systemctl 启动失败，尝试后台启动..."
+            nohup /usr/local/bin/v2ray -config /usr/local/etc/v2ray/config.json > /dev/null 2>&1 &
             sleep 1
             log_info "V2Ray 已启动（后台模式）"
         fi
+    elif command -v rc-service &> /dev/null; then
+        rc-service v2ray start 2>/dev/null || true
+        log_info "V2Ray 已启动"
     else
-        log_warn "systemctl 不可用，使用后台启动"
-        nohup /usr/local/bin/v2ray -config /etc/v2ray/config.json > /dev/null 2>&1 &
+        # 直接后台启动
+        nohup /usr/local/bin/v2ray -config /usr/local/etc/v2ray/config.json > /dev/null 2>&1 &
         sleep 1
         log_info "V2Ray 已启动（后台模式）"
     fi
@@ -238,7 +394,14 @@ start_v2ray() {
 
 # 获取服务器 IP
 get_server_ip() {
-    SERVER_IP=$(curl -s4 ip.sb 2>/dev/null || curl -s4 ifconfig.me 2>/dev/null || curl -s4 icanhazip.com 2>/dev/null)
+    # 尝试多个服务获取 IP
+    SERVER_IP=$(curl -s4 ip.sb 2>/dev/null || curl -s4 ifconfig.me 2>/dev/null || curl -s4 icanhazip.com 2>/dev/null || curl -s4 ipinfo.io/ip 2>/dev/null || hostname -I 2>/dev/null | awk '{print $2}')
+
+    if [ -z "$SERVER_IP" ]; then
+        log_error "无法获取服务器 IP"
+        SERVER_IP="your-server-ip"
+    fi
+
     log_info "服务器 IP: $SERVER_IP"
 }
 
@@ -265,46 +428,70 @@ EOF
 )
 
     # Base64 编码
-    VMess_LINK=$(echo -n "$CONFIG" | base64 -w 0 2>/dev/null || echo -n "$CONFIG" | base64)
+    if command -v base64 &> /dev/null; then
+        VMess_LINK=$(echo -n "$CONFIG" | base64 -w 0 2>/dev/null || echo -n "$CONFIG" | base64)
+    else
+        VMess_LINK=$(echo -n "$CONFIG" | openssl enc -base64 -A 2>/dev/null)
+    fi
 
     echo ""
     echo "=========================================="
     echo "        V2Ray 安装完成！"
     echo "=========================================="
     echo ""
-    echo "服务器地址: $SERVER_IP"
-    echo "服务器端口: $PORT"
-    echo "用户ID (UUID): $UUID"
-    echo "协议: VMess"
+    echo "${GREEN}服务器地址:${NC} $SERVER_IP"
+    echo "${GREEN}服务器端口:${NC} $PORT"
+    echo "${GREEN}用户ID (UUID):${NC} $UUID"
+    echo "${GREEN}协议:${NC} VMess"
+    echo "${GREEN}额外ID (alterId):${NC} 0"
+    echo "${GREEN}传输协议:${NC} TCP"
     echo ""
-    echo "VMess 分享链接:"
+    echo "${BLUE}VMess 分享链接:${NC}"
     echo "vmess://$VMess_LINK"
+    echo ""
+    echo "${YELLOW}常用命令:${NC}"
+    echo "  查看状态: systemctl status v2ray"
+    echo "  启动服务: systemctl start v2ray"
+    echo "  停止服务: systemctl stop v2ray"
+    echo "  重启服务: systemctl restart v2ray"
+    echo "  查看日志: journalctl -u v2ray -f"
+    echo "  查看配置: cat /usr/local/etc/v2ray/config.json"
     echo ""
     echo "=========================================="
 }
 
 # 主安装流程
 main() {
-    log_info "开始安装 V2Ray..."
+    log_info "${BLUE}========================================${NC}"
+    log_info "${BLUE}   V2Ray 一键安装脚本${NC}"
+    log_info "${BLUE}========================================${NC}"
+    echo ""
+
+    # 检测系统和安装依赖
+    detect_os
+    install_dependencies
 
     # 检查必要的命令
     for cmd in curl wget unzip; do
         if ! command -v $cmd &> /dev/null; then
-            log_error "缺少必要命令: $cmd，请先安装"
+            log_error "依赖安装失败，缺少命令: $cmd"
+            log_error "请手动安装后重试"
             exit 1
         fi
     done
 
-    detect_os
-    install_dependencies
+    # 安装流程
     install_v2ray
     configure_v2ray
+    create_service
     configure_firewall
     get_server_ip
     start_v2ray
     generate_client_config
 
-    log_info "安装完成！"
+    log_info "${GREEN}========================================${NC}"
+    log_info "${GREEN}   安装完成！${NC}"
+    log_info "${GREEN}========================================${NC}"
 
     # 明确返回成功状态
     exit 0

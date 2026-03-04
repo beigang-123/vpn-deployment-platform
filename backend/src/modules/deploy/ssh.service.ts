@@ -134,8 +134,23 @@ export class SshService {
         })
         .connect({
           ...config,
-          readyTimeout: 60000,  // 60秒连接超时
-          keepaliveInterval: 10000,  // 10秒心跳
+          readyTimeout: 90000,  // 增加到 90 秒
+          keepaliveInterval: 15000,  // 15 秒心跳
+          algorithms: {
+            kex: [
+              'diffie-hellman-group-exchange-sha256',
+              'diffie-hellman-group14-sha256',
+              'ecdh-sha2-nistp256',
+              'curve25519-sha256'
+            ],
+            cipher: [
+              'aes128-ctr',
+              'aes192-ctr',
+              'aes256-ctr',
+              'aes128-gcm',
+              'aes256-gcm'
+            ]
+          }
         });
     });
   }
@@ -187,8 +202,23 @@ export class SshService {
         })
         .connect({
           ...config,
-          readyTimeout: 30000,
-          keepaliveInterval: 10000,
+          readyTimeout: 60000,  // 增加到 60 秒
+          keepaliveInterval: 15000,  // 15 秒心跳
+          algorithms: {
+            kex: [
+              'diffie-hellman-group-exchange-sha256',
+              'diffie-hellman-group14-sha256',
+              'ecdh-sha2-nistp256',
+              'curve25519-sha256'
+            ],
+            cipher: [
+              'aes128-ctr',
+              'aes192-ctr',
+              'aes256-ctr',
+              'aes128-gcm',
+              'aes256-gcm'
+            ]
+          }
         });
     });
   }

@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, AfterLoad, BeforeInsert, BeforeUpdate, Index } from 'typeorm';
+import { EncryptionService } from '../modules/encryption/encryption.service';
 
 export enum DeploymentStatus {
   PENDING = 'pending',           // 等待中
@@ -48,6 +49,9 @@ export interface OnlineUser {
 }
 
 @Entity('deployments')
+@Index(['status', 'region'])
+@Index(['serverIp', 'status'])
+@Index(['createdAt'])
 export class Deployment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -138,4 +142,77 @@ export class Deployment {
 
   @UpdateDateColumn({ type: 'timestamp' })
   updatedAt: Date;
+
+  // Temporary storage for decrypted values (not persisted)
+  private _decryptedPassword?: string;
+  private _decryptedPrivateKey?: string;
+
+  /**
+   * Get decrypted password
+   */
+  getDecryptedPassword(encryptionService: EncryptionService): string {
+    if (!this.password) return '';
+
+    // Return cached decrypted value if available
+    if (this._decryptedPassword) {
+      return this._decryptedPassword;
+    }
+
+    // Decrypt and cache
+    this._decryptedPassword = encryptionService.decrypt(this.password);
+    return this._decryptedPassword;
+  }
+
+  /**
+   * Set password (will be encrypted on save)
+   */
+  setPassword(password: string, encryptionService: EncryptionService): void {
+    this._decryptedPassword = password;
+    this.password = encryptionService.encrypt(password);
+  }
+
+  /**
+   * Get decrypted private key
+   */
+  getDecryptedPrivateKey(encryptionService: EncryptionService): string {
+    if (!this.privateKey) return '';
+
+    // Return cached decrypted value if available
+    if (this._decryptedPrivateKey) {
+      return this._decryptedPrivateKey;
+    }
+
+    // Decrypt and cache
+    this._decryptedPrivateKey = encryptionService.decrypt(this.privateKey);
+    return this._decryptedPrivateKey;
+  }
+
+  /**
+   * Set private key (will be encrypted on save)
+   */
+  setPrivateKey(privateKey: string, encryptionService: EncryptionService): void {
+    this._decryptedPrivateKey = privateKey;
+    this.privateKey = encryptionService.encrypt(privateKey);
+  }
+
+  /**
+   * Before insert - encrypt sensitive data
+   * Note: This is handled at the service level for better control
+   */
+  @BeforeInsert()
+  @BeforeUpdate()
+  encryptSensitiveData() {
+    // Encryption is handled at service level to avoid circular dependency
+    // This hook is kept for future use if needed
+  }
+
+  /**
+   * After load - keep encrypted data as is
+   * Decryption happens on-demand via getDecryptedPassword/getDecryptedPrivateKey
+   */
+  @AfterLoad()
+  onLoad() {
+    // Data remains encrypted in memory
+    // Decryption happens on-demand via getter methods
+  }
 }

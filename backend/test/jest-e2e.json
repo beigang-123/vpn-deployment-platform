@@ -1,0 +1,16 @@
+module.exports = {
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/../src/$1',
+  },
+  testEnvironment: 'node',
+  roots: ['<rootDir>'],
+  testMatch: [
+    '**/*.e2e-spec.ts',
+  ],
+  transform: {
+    '^.+\\.(t|j)s$': 'ts-jest',
+  },
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  verbose: true,
+  testTimeout: 60000,
+};

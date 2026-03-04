@@ -29,6 +29,20 @@
       />
     </el-form-item>
 
+    <el-form-item label="VPN 端口" prop="vpnPort">
+      <el-input-number
+        v-model="formData.vpnPort"
+        :min="1"
+        :max="65535"
+        :step="1"
+        placeholder="留空自动生成 (10000-59999)"
+        style="width: 100%"
+      />
+      <div style="font-size: 12px; color: #909399; margin-top: 4px">
+        建议使用 10000-59999 范围内的端口
+      </div>
+    </el-form-item>
+
     <el-form-item label="用户名" prop="username">
       <el-input
         v-model="formData.username"
@@ -79,6 +93,7 @@ const formRef = ref();
 const formData = reactive({
   serverIp: '',
   sshPort: 22,
+  vpnPort: undefined as number | undefined,
   username: 'root',
   password: '',
   privateKey: '',

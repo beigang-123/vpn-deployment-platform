@@ -1,10 +1,12 @@
-import { Controller, Post, Get, Delete, Put, Body, Param, Query, HttpException, HttpStatus, Res } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Put, Body, Param, Query, HttpException, HttpStatus, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { DeployService } from './deploy.service';
 import { StartDeployDto } from './dto';
 import { Deployment, DeploymentStatus, VpnType } from '../../entities/deployment.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('api/deploy')
+@UseGuards(JwtAuthGuard)
 export class DeployController {
   constructor(private deployService: DeployService) {}
 

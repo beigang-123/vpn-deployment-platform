@@ -1,15 +1,21 @@
 import axios from 'axios';
 import type { ServerInfo, VpnType, VpnConfig } from '@/stores/deploy';
+import type { AuthResponse, LoginCredentials, RegisterData } from '@/stores/auth';
+import { ElMessage } from 'element-plus';
+import router from '@/router';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 30000,
 });
 
-// Request interceptor
+// Request interceptor - Add auth token
 api.interceptors.request.use(
   (config) => {
-    // Development logging - remove in production or use proper logger
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {
@@ -17,12 +23,59 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor - Handle errors and token refresh
 api.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Handle 401 Unauthorized
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      // Try to refresh token
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        try {
+          const response = await axios.post<AuthResponse>(
+            `${import.meta.env.VITE_API_URL || '/api'}/auth/refresh`,
+            { refreshToken }
+          );
+
+          const { accessToken } = response.data;
+          localStorage.setItem('access_token', accessToken);
+
+          // Retry original request with new token
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          return api(originalRequest);
+        } catch (refreshError) {
+          // Refresh failed, clear auth and redirect to login
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('user');
+          router.push('/login');
+          ElMessage.error('登录已过期，请重新登录');
+          return Promise.reject(refreshError);
+        }
+      } else {
+        // No refresh token, redirect to login
+        router.push('/login');
+        ElMessage.error('请先登录');
+        return Promise.reject(error);
+      }
+    }
+
+    // Handle other errors
+    if (error.response?.status === 403) {
+      ElMessage.error('无权访问');
+    } else if (error.response?.status === 500) {
+      ElMessage.error('服务器错误，请稍后重试');
+    } else if (error.response?.status === 503) {
+      ElMessage.error('服务暂时不可用');
+    }
+
     return Promise.reject(error);
   }
 );
@@ -244,6 +297,50 @@ export const deployApi = {
    */
   async batchHealthCheck(ids: string[]): Promise<Map<string, any>> {
     const response = await api.post<Map<string, any>>('/deploy/batch/health', { ids });
+    return response.data;
+  },
+};
+
+// Authentication API
+export const authApi = {
+  /**
+   * Login
+   */
+  async login(credentials: LoginCredentials): Promise<AuthResponse> {
+    const response = await api.post<AuthResponse>('/auth/login', credentials);
+    return response.data;
+  },
+
+  /**
+   * Register
+   */
+  async register(data: RegisterData): Promise<AuthResponse> {
+    const response = await api.post<AuthResponse>('/auth/register', data);
+    return response.data;
+  },
+
+  /**
+   * Logout
+   */
+  async logout(): Promise<void> {
+    await api.post('/auth/logout');
+  },
+
+  /**
+   * Refresh token
+   */
+  async refreshToken(refreshToken: string): Promise<{ accessToken: string }> {
+    const response = await api.post<{ accessToken: string }>('/auth/refresh', {
+      refreshToken,
+    });
+    return response.data;
+  },
+
+  /**
+   * Get current user
+   */
+  async getCurrentUser(): Promise<any> {
+    const response = await api.get('/auth/me');
     return response.data;
   },
 };

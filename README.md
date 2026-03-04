@@ -87,7 +87,60 @@
 - **MySQL** 8.0 or higher
 - **A server** with SSH access (Ubuntu 20.04+, CentOS 7+, or Debian 10+ recommended)
 
-### Installation
+### Option 1: Docker Deployment (Recommended)
+
+#### 1. Clone the repository
+
+```bash
+git clone https://github.com/beigang-123/vpn-deployment-platform.git
+cd vpn-deployment-platform
+```
+
+#### 2. Configure environment
+
+```bash
+cp .env.docker.example .env
+# Edit .env and set secure passwords
+```
+
+**Generate secure keys**:
+
+```bash
+# Generate JWT Secret (64 bytes hex)
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# Generate Encryption Key (32 bytes hex)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+#### 3. Start with Docker Compose
+
+```bash
+docker-compose up -d
+```
+
+That's it! The application will be available at:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:3001
+
+#### 4. View logs
+
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f backend
+docker-compose logs -f frontend
+```
+
+#### 5. Stop services
+
+```bash
+docker-compose down
+```
+
+### Option 2: Manual Installation
 
 #### 1. Clone the repository
 
@@ -124,7 +177,35 @@ DB_PASSWORD=your_secure_password_here
 DB_DATABASE=vpn_deploy
 
 # CORS Configuration
-CORS_ORIGIN=*
+# Comma-separated list of allowed origins
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# JWT Authentication Configuration
+# IMPORTANT: Generate a secure random key for production
+# Use: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+JWT_SECRET=your-jwt-secret-key-change-in-production-min-64-chars
+JWT_EXPIRATION=1h
+JWT_REFRESH_EXPIRATION=7d
+
+# Encryption Configuration
+# IMPORTANT: Generate a secure 32-byte hex key for production
+# Use: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+# Cache Configuration
+CACHE_TTL=3600
+
+# SSH Connection Pool Configuration
+SSH_POOL_MIN=2
+SSH_POOL_MAX=10
+
+# Security Configuration
+# Rate limiting: requests per minute
+THROTTLER_TTL=60000
+THROTTLER_LIMIT=100
+
+# Logging Configuration
+LOG_LEVEL=info
 ```
 
 #### 4. Initialize Database
@@ -164,7 +245,17 @@ cp .env.example .env
 The default `frontend/.env` should look like:
 
 ```env
+# API Base URL
+VITE_API_URL=http://localhost:3001/api
+
+# Socket.io Server URL
 VITE_SOCKET_URL=http://localhost:3001
+
+# Application Title
+VITE_APP_TITLE=VPN 一键部署平台
+
+# Enable Debug Mode (true/false)
+VITE_DEBUG=false
 ```
 
 #### 7. Start Development Servers
@@ -317,11 +408,16 @@ GET /api/config/download/:id
 
 ## 🔒 Security Considerations
 
-- ✅ SSH passwords and private keys are **not permanently stored** in the database
-- ✅ Private keys are handled **in memory only** and never written to disk
-- ✅ Use **HTTPS** in production environments
-- ✅ Implement **rate limiting** for API endpoints
-- ✅ Add **authentication** for the platform itself (TODO)
+- ✅ **JWT Authentication** - Secure token-based authentication with refresh token support
+- ✅ **AES-256-GCM Encryption** - SSH credentials encrypted before database storage
+- ✅ **Rate Limiting** - Configurable request throttling (default: 100 req/min)
+- ✅ **CORS Protection** - Configurable origin whitelist
+- ✅ **Security Headers** - Helmet middleware for secure HTTP headers
+- ✅ **Input Validation** - Strong password requirements, IP/port validation
+- ✅ **SSH Credentials** - Passwords and private keys encrypted, never logged
+- ✅ **In-Memory Only** - Private keys handled in memory, never written to disk
+- ⚠️ **Use HTTPS** in production environments
+- ⚠️ **Generate Strong Keys** - Use secure JWT_SECRET and ENCRYPTION_KEY in production
 - ✅ Regular **security audits** for dependencies
 
 ## 🐛 Troubleshooting
@@ -446,7 +542,60 @@ This tool is for educational and authorized testing purposes only. Users are res
 - **MySQL** 8.0 或更高版本
 - **具有 SSH 访问权限的服务器**（推荐 Ubuntu 20.04+、CentOS 7+ 或 Debian 10+）
 
-### 安装步骤
+### 方式 1：Docker 部署（推荐）
+
+#### 1. 克隆仓库
+
+```bash
+git clone https://github.com/beigang-123/vpn-deployment-platform.git
+cd vpn-deployment-platform
+```
+
+#### 2. 配置环境
+
+```bash
+cp .env.docker.example .env
+# 编辑 .env 并设置安全密码
+```
+
+**生成安全密钥**：
+
+```bash
+# 生成 JWT Secret（64 字节十六进制）
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# 生成加密密钥（32 字节十六进制）
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+#### 3. 使用 Docker Compose 启动
+
+```bash
+docker-compose up -d
+```
+
+完成！应用将在以下地址可用：
+- **前端界面**: http://localhost:3000
+- **后端 API**: http://localhost:3001
+
+#### 4. 查看日志
+
+```bash
+# 所有服务
+docker-compose logs -f
+
+# 特定服务
+docker-compose logs -f backend
+docker-compose logs -f frontend
+```
+
+#### 5. 停止服务
+
+```bash
+docker-compose down
+```
+
+### 方式 2：手动安装
 
 #### 1. 克隆仓库
 
@@ -676,11 +825,16 @@ GET /api/config/download/:id
 
 ## 🔒 安全考虑
 
-- ✅ SSH 密码和私钥**不会永久存储**在数据库中
-- ✅ 私钥仅在**内存中处理**，从不写入磁盘
-- ✅ 生产环境中使用 **HTTPS**
-- ✅ 为 API 端点实现**速率限制**
-- ✅ 为平台本身添加**身份认证**（待实现）
+- ✅ **JWT 身份验证** - 基于令牌的安全认证，支持刷新令牌
+- ✅ **AES-256-GCM 加密** - SSH 凭证在存储前加密
+- ✅ **速率限制** - 可配置的请求节流（默认：100 请求/分钟）
+- ✅ **CORS 保护** - 可配置的来源白名单
+- ✅ **安全头** - Helmet 中间件提供安全的 HTTP 头
+- ✅ **输入验证** - 强密码要求、IP/端口验证
+- ✅ **SSH 凭证安全** - 密码和私钥加密，永不记录日志
+- ✅ **仅内存处理** - 私钥仅在内存中处理，从不写入磁盘
+- ⚠️ **生产环境使用 HTTPS**
+- ⚠️ **生成强密钥** - 生产环境使用安全的 JWT_SECRET 和 ENCRYPTION_KEY
 - ✅ 定期对依赖项进行**安全审计**
 
 ## 🐛 故障排查

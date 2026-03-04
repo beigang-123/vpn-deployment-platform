@@ -11,9 +11,15 @@ import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { StartDeployDto } from '../modules/deploy/dto';
 import { DeployService } from '../modules/deploy/deploy.service';
 
+// Get allowed origins from environment
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : ['http://localhost:5173'];
+
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: allowedOrigins,
+    credentials: true,
   },
 })
 export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
@@ -176,6 +182,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
   /**
    * Start periodic health check for all deployments
+   * OPTIMIZED: Uses parallel processing with Promise.all()
    */
   private startPeriodicHealthCheck() {
     // Run health check every 60 seconds
@@ -187,26 +194,39 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       try {
         const deployments = await this.deployService.getAllDeployments();
 
-        for (const deployment of deployments) {
-          if (deployment.status === 'running' || deployment.status === 'completed') {
-            try {
-              const result = await this.deployService.healthCheck(deployment.id);
-              this.broadcastHealthCheck(deployment.id, result);
+        // Filter deployments that need health check
+        const activeDeployments = deployments.filter(
+          (d) => d.status === 'running' || d.status === 'completed'
+        );
 
-              if (result.metrics) {
-                this.broadcastMetrics(deployment.id, result.metrics);
-              }
-            } catch (error) {
-              this.logger.error(`Health check failed for ${deployment.id}: ${error.message}`);
-            }
-          }
+        if (activeDeployments.length === 0) {
+          return;
         }
+
+        // Process health checks in parallel (fixes N+1 query issue)
+        const healthCheckPromises = activeDeployments.map(async (deployment) => {
+          try {
+            const result = await this.deployService.healthCheck(deployment.id);
+            this.broadcastHealthCheck(deployment.id, result);
+
+            if (result.metrics) {
+              this.broadcastMetrics(deployment.id, result.metrics);
+            }
+          } catch (error) {
+            this.logger.error(`Health check failed for ${deployment.id}: ${error.message}`);
+          }
+        });
+
+        // Execute all health checks in parallel
+        await Promise.allSettled(healthCheckPromises);
+
+        this.logger.debug(`Completed ${activeDeployments.length} parallel health checks`);
       } catch (error) {
         this.logger.error(`Periodic health check error: ${error.message}`);
       }
     }, 60000); // 60 seconds
 
-    this.logger.log('Periodic health check started (interval: 60s)');
+    this.logger.log('Periodic health check started (interval: 60s, parallel mode)');
   }
 
   /**

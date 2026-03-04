@@ -1,12 +1,12 @@
 <template>
   <el-config-provider :locale="locale">
     <div class="app-container">
-      <div class="nav-menu">
+      <div v-if="authStore.isAuthenticated" class="nav-menu">
         <router-link to="/" class="nav-item" :class="{ active: route.path === '/' || route.path.startsWith('/config') }">
           <el-icon><Position /></el-icon>
           部署向导
         </router-link>
-        <router-link to="/management" class="nav-item" :class="{ active: route.path === '/management' }" @click.native="handleNavClick('/management')">
+        <router-link to="/management" class="nav-item" :class="{ active: route.path === '/management' }">
           <el-icon><Monitor /></el-icon>
           部署管理
         </router-link>
@@ -14,6 +14,28 @@
           <el-icon><List /></el-icon>
           部署历史
         </router-link>
+
+        <div class="nav-spacer"></div>
+
+        <div class="user-menu">
+          <el-dropdown>
+            <div class="user-info">
+              <el-icon><User /></el-icon>
+              <span>{{ authStore.currentUser?.name || authStore.currentUser?.email || '用户' }}</span>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item disabled>
+                  {{ authStore.currentUser?.email }}
+                </el-dropdown-item>
+                <el-dropdown-item divided @click="handleLogout">
+                  <el-icon><SwitchButton /></el-icon>
+                  退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
       <div class="content-wrapper">
         <router-view :key="$route.fullPath" />
@@ -23,19 +45,39 @@
 </template>
 
 <script setup lang="ts">
-import { provide } from 'vue';
+import { provide, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { ElMessageBox } from 'element-plus';
 import pinia from './stores';
+import { useAuthStore } from './stores/auth';
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs';
-import { Position, List, Monitor } from '@element-plus/icons-vue';
+import { Position, List, Monitor, User, SwitchButton } from '@element-plus/icons-vue';
 
 const locale = zhCn;
 const route = useRoute();
+const authStore = useAuthStore();
 
 provide('pinia', pinia);
 
-const handleNavClick = (path: string) => {
-  // Navigation handling
+// Load user from storage on mount
+onMounted(() => {
+  if (authStore.token && !authStore.user) {
+    authStore.loadUserFromStorage();
+  }
+});
+
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+
+    await authStore.logout();
+  } catch (error) {
+    // User cancelled
+  }
 };
 </script>
 
@@ -82,6 +124,34 @@ body {
   align-items: center;
   height: 60px;
   gap: 8px;
+  border-bottom: 1px solid #e5e5e7;
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.user-menu {
+  margin-left: auto;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.user-info:hover {
+  background-color: #f5f5f7;
+}
+
+.user-info span {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .nav-item {
