@@ -37,3 +37,6 @@ clash-config.yaml
 # Temporary files
 nul
 .claude/
+
+# Claude Code
+.claude/
