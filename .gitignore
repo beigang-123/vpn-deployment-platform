@@ -36,3 +36,4 @@ clash-config.yaml
 
 # Temporary files
 nul
+.claude/
